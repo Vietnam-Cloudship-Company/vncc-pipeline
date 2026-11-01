@@ -1,0 +1,34 @@
+services:
+  # ===================================== Main Service ===================================== 
+  service-name:
+    build:
+      context: ./svc-container
+    env_file:
+      - ./catalog/ci.env
+    depends_on:
+      - dependency-service-1
+
+  # ===================================== Functionality Test ===================================== 
+  integration-test:
+    build:
+      context: ./test-container
+    env_file:
+      - ./catalog/ci.env
+    depends_on:
+      - service-name
+
+  # ===================================== Service Dependencies ===================================== 
+  # This section is for any additional services that the main service depends on. 
+  # These can be other microservices, databases, or any other required services. 
+  # Each dependency should be defined with its own build context or image, 
+  # and can also have its own environment variables and configurations.
+  dependency-service-1:
+    build:
+      context: ./dependency-container-1
+    env_file:
+      - ./catalog/ci.env
+
+  dependency-service-2:
+    image: dependency-service-2:specific-tag@sha-digest
+    env_file:
+      - ./catalog/ci.env
