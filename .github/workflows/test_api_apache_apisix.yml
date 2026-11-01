@@ -1,0 +1,28 @@
+name: Apache APISIX Continuous Testing
+
+on:
+  push:
+    paths:
+      - "standard_services/api_apache_apisix/**"
+      - "integration-yard/api_apache_apisix/**"
+      - ".github/workflows/_standard_ct.yml"
+      - ".github/workflows/test_api_apache_apisix.yml"
+  pull_request:
+    paths:
+      - "standard_services/api_apache_apisix/**"
+      - "integration-yard/api_apache_apisix/**"
+      - ".github/workflows/_standard_ct.yml"
+      - ".github/workflows/test_api_apache_apisix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration-test:
+    name: Run standard CT for api_apache_apisix
+    uses: ./.github/workflows/_standard_ct.yml
+    with:
+      service-name: api_apache_apisix
+    secrets:
+      ADMIN_KEY: ${{ secrets.ADMIN_KEY }}

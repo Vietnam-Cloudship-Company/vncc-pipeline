@@ -1,0 +1,72 @@
+name: Standard CT
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        description: Name of the service and its integration-yard directory
+        required: true
+        type: string
+    secrets:
+      ADMIN_KEY:
+        description: APISIX Admin API key used by the integration yard
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Stage service in integration yard
+        env:
+          SERVICE_NAME: ${{ inputs.service-name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SERVICE_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo "Invalid service name" >&2
+            exit 1
+          fi
+
+          service_dir="standard_services/${SERVICE_NAME}"
+          yard_dir="integration-yard/${SERVICE_NAME}"
+          if [[ ! -f "${service_dir}/Dockerfile" || ! -d "$yard_dir/svc-container" ]]; then
+            echo "Service Dockerfile or integration-yard staging directory is missing" >&2
+            exit 1
+          fi
+
+          rm -f "${yard_dir}/svc-container/.gitkeep"
+          cp -a "${service_dir}/." "${yard_dir}/svc-container/"
+
+      - name: Validate Compose configuration
+        env:
+          SERVICE_NAME: ${{ inputs.service-name }}
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          docker compose -f "integration-yard/${SERVICE_NAME}/docker-compose.yml" config --quiet
+
+      - name: Run integration tests
+        env:
+          SERVICE_NAME: ${{ inputs.service-name }}
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          docker compose \
+            -f "integration-yard/${SERVICE_NAME}/docker-compose.yml" \
+            up --build --abort-on-container-exit --exit-code-from integration-test
+
+      - name: Tear down integration yard
+        if: always()
+        env:
+          SERVICE_NAME: ${{ inputs.service-name }}
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          docker compose \
+            -f "integration-yard/${SERVICE_NAME}/docker-compose.yml" \
+            down --volumes --remove-orphans
