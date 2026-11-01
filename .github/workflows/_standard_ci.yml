@@ -1,5 +1,7 @@
 name: Standard CI
 
+description: "Reusable workflow for Continuous Integration"
+
 on:
   workflow_dispatch:
     inputs:

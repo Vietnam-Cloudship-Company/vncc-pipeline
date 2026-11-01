@@ -1,37 +1,98 @@
-name: "PNPM installation"
-description: "Runs a pnpm install"
+name: 'pnpm installation'
+description: 'Sets up Node.js and pnpm, caches packages, and installs project dependencies.'
+author: 'VNCC'
+branding: {icon: package, color: blue}
 
 inputs:
   node-version:
-    description: Node version
+    description: 'Node.js version for setup-node.'
     required: true
-    default: "22"
-
+    default: '22'
   service-name:
-    description: Service to run
+    description: 'Workspace-relative pnpm project directory.'
     required: true
+
+outputs:
+  result:
+    description: 'pass when pnpm install completes.'
+    value: ${{ steps.main-3.outputs.result }}
 
 runs:
-  using: "composite"
+  using: composite
   steps:
-    - name: Set up pnpm
+    # =========== input section ===========
+    - name: input / step 1 - export inputs
+      shell: bash
+      env:
+        V1: ${{ inputs.node-version }}
+        V2: ${{ inputs.service-name }}
+      run: |
+        set -euo pipefail
+        [[ "$V1" =~ ^[0-9]+([.][A-Za-z0-9.+_-]+)?$ ]] || { echo "::error::node-version has invalid format"; exit 1; }
+        [[ "$V2" != *$'\n'* && "$V2" != *$'\r'* ]] || { echo "::error::service-name cannot contain newlines"; exit 1; }
+        workspace="$(realpath "$GITHUB_WORKSPACE")"
+        service_path="$(realpath -m "$workspace/$V2")"
+        case "$service_path" in
+          "$workspace"|"$workspace"/*) ;;
+          *) echo "::error::service-name must stay inside GITHUB_WORKSPACE"; exit 1 ;;
+        esac
+        {
+          printf 'IN_NODE_VERSION=%s\n' "$V1"
+          printf 'IN_SERVICE_NAME=%s\n' "$V2"
+          printf 'IN_SERVICE_PATH=%s\n' "$service_path"
+        } >> "$GITHUB_ENV"
+
+    - name: input / step 2 - validate pnpm project
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ -d "$IN_SERVICE_PATH" ]] || { echo "::error::pnpm project directory not found"; exit 1; }
+        [[ -f "$IN_SERVICE_PATH/package.json" ]] || { echo "::error::package.json not found in pnpm project"; exit 1; }
+
+    # =========== setup section ===========
+    - name: setup / step 1 - pnpm
       uses: pnpm/action-setup@v4
       with:
         version: 9
 
-    - name: Set up Node.js
+    - name: setup / step 2 - Node.js and pnpm cache
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ inputs.node-version }}
+        node-version: ${{ env.IN_NODE_VERSION }}
         cache: pnpm
-        cache-dependency-path: ${{ inputs.service-name }}/pnpm-lock.yaml
+        cache-dependency-path: ${{ env.IN_SERVICE_PATH }}/pnpm-lock.yaml
 
-    - name: Dependencies installation with pnpm
+    # =========== main section ===========
+    - name: main / step 1 - install pnpm dependencies
       shell: bash
       run: |
-        if [ -f pnpm-lock.yaml ]; then
+        set -euo pipefail
+        cd "$IN_SERVICE_PATH"
+        if [[ -f pnpm-lock.yaml ]]; then
           pnpm install --frozen-lockfile
         else
           pnpm install
         fi
-      working-directory: "./${{ inputs.service-name }}"
+
+    - name: main / step 2 - record completion
+      shell: bash
+      run: echo 'TMP_RESULT=pass' >> "$GITHUB_ENV"
+
+    - name: main / step 3 - export outputs
+      id: main-3
+      shell: bash
+      run: echo "result=$TMP_RESULT" >> "$GITHUB_OUTPUT"
+
+    # =========== output section ===========
+    - name: output / step 1 - print outputs
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.result }}
+      run: echo "result=$O1"
+
+    - name: output / step 2 - job summary
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.result }}
+      run: |
+        echo "pnpm dependency installation result: $O1" >> "$GITHUB_STEP_SUMMARY"
