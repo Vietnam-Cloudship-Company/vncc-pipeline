@@ -1,0 +1,111 @@
+# Interface truth. Sections run in fixed order: input -> setup -> main -> output.
+name: 'ACTION_NAME'
+description: 'One line: what it does.'
+author: 'OWNER'
+branding: {icon: check, color: green}
+
+inputs:
+  input-1:
+    description: 'string; required'
+    required: true
+  input-2:
+    description: 'string; optional'
+    default: 'default-2'
+  input-3:
+    description: 'secret; pass via secrets.*'
+    required: true
+
+outputs:
+  output-1:
+    description: 'string'
+    value: ${{ steps.main-3.outputs.output-1 }}
+  output-2:
+    description: 'string'
+    value: ${{ steps.main-3.outputs.output-2 }}
+  output-3:
+    description: 'pass|fail'
+    value: ${{ steps.main-3.outputs.output-3 }}
+
+runs:
+  using: composite
+  steps:
+
+    # =========== input section ===========
+    # Only place ${{ inputs.* }} is read. All values become env vars (IN_1..IN_3).
+
+    - name: input / step 1 - mask secret and export env
+      shell: bash
+      env:
+        V1: ${{ inputs.input-1 }}
+        V2: ${{ inputs.input-2 }}
+        V3: ${{ inputs.input-3 }}
+      run: |
+        echo "::add-mask::$V3"
+        {
+          echo "IN_1=$V1"
+          echo "IN_2=$V2"
+          echo "IN_3=$V3"
+        } >> "$GITHUB_ENV"
+
+    - name: input / step 2 - validate
+      shell: bash
+      run: |
+        [ -n "$IN_1" ] || { echo "::error::input-1 required"; exit 1; }
+        [ -n "$IN_3" ] || { echo "::error::input-3 required"; exit 1; }
+
+    # =========== setup section ===========
+    # One external action per step. Pin by SHA in production. No inputs.* here.
+
+    - name: setup / step 1 - checkout
+      uses: actions/checkout@v4
+
+    - name: setup / step 2 - node
+      uses: actions/setup-node@v4
+      with: {node-version: 20}
+
+    # =========== main section ===========
+    # Use env vars from input section only. Last step writes all outputs.
+
+    - name: main / step 1 - prepare
+      shell: bash
+      run: |
+        echo "working on: $IN_1"
+        # TODO: prepare. Share internal state via $GITHUB_ENV (prefix TMP_).
+        echo "TMP_A=prepared-$IN_2" >> "$GITHUB_ENV"
+
+    - name: main / step 2 - process
+      shell: bash
+      run: |
+        # TODO: logic using $IN_1 $IN_2 $IN_3 $TMP_A
+        echo "TMP_B=done" >> "$GITHUB_ENV"
+
+    - name: main / step 3 - export outputs
+      id: main-3
+      shell: bash
+      run: |
+        {
+          echo "output-1=$TMP_A"
+          echo "output-2=$TMP_B"
+          echo "output-3=pass"
+        } >> "$GITHUB_OUTPUT"
+
+    # =========== output section ===========
+    # Print only. No logic.
+
+    - name: output / step 1 - print outputs
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.output-1 }}
+        O2: ${{ steps.main-3.outputs.output-2 }}
+        O3: ${{ steps.main-3.outputs.output-3 }}
+      run: |
+        echo "output-1=$O1"
+        echo "output-2=$O2"
+        echo "output-3=$O3"
+
+    - name: output / step 2 - job summary
+      shell: bash
+      env:
+        O3: ${{ steps.main-3.outputs.output-3 }}
+      run: |
+        echo "result: $O3" >> "$GITHUB_STEP_SUMMARY"

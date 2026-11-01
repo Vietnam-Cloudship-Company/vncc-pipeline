@@ -1,0 +1,212 @@
+name: Standard CI
+
+description: "Reusable workflow for Continuous Integration"
+
+on:
+  workflow_dispatch:
+    inputs:
+      technology_stack:
+        description: "Technology stack to build and validate"
+        required: true
+        type: choice
+        options:
+          - springboot-java
+          - react-ts
+          - react-js
+          - node-js
+
+      dependency_manager:
+        description: "Package manager or build tool"
+        required: true
+        type: choice
+        options:
+          - auto
+          - mvn
+          - npm
+          - pnpm
+
+      target_path:
+        description: "Relative path to the app directory to build in the checked-out repository"
+        required: false
+        default: "."
+        type: string
+
+      docker_image_name:
+        description: "Docker image name to build"
+        required: false
+        default: "vncc-app"
+        type: string
+
+      build_container:
+        description: "Build the Docker image after the app build/test step"
+        required: false
+        default: true
+        type: boolean
+
+      run_tests:
+        description: "Run project tests when they are defined"
+        required: false
+        default: true
+        type: boolean
+
+  workflow_call:
+    inputs:
+      technology_stack:
+        required: true
+        type: string
+
+      dependency_manager:
+        required: true
+        type: string
+
+      target_path:
+        required: false
+        type: string
+        default: "."
+
+      docker_image_name:
+        required: false
+        type: string
+        default: "vncc-app"
+
+      build_container:
+        required: false
+        type: boolean
+        default: true
+
+      run_tests:
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  standard-ci:
+    name: Build, test and package ${{ github.event.inputs.technology_stack || inputs.technology_stack }}
+    runs-on: ubuntu-latest
+    env:
+      TECHNOLOGY_STACK: ${{ github.event.inputs.technology_stack || inputs.technology_stack }}
+      DEPENDENCY_MANAGER: ${{ github.event.inputs.dependency_manager || inputs.dependency_manager }}
+      TARGET_PATH: ${{ github.event.inputs.target_path || inputs.target_path }}
+      DOCKER_IMAGE_NAME: ${{ github.event.inputs.docker_image_name || inputs.docker_image_name }}
+      BUILD_CONTAINER: ${{ github.event.inputs.build_container || inputs.build_container }}
+      RUN_TESTS: ${{ github.event.inputs.run_tests || inputs.run_tests }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with: 
+          persist-credentials: false
+
+      - name: Resolve stack and toolchain
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          stack="${TECHNOLOGY_STACK}"
+          dep="${DEPENDENCY_MANAGER}"
+
+          case "$stack" in
+            springboot-java)
+              default_dep="mvn"
+              dockerfile="java_springboot.Dockerfile"
+              ;;
+            react-ts)
+              default_dep="pnpm"
+              dockerfile="ui_react_ts.Dockerfile"
+              ;;
+            react-js)
+              default_dep="npm"
+              dockerfile="react_js.Dockerfile"
+              ;;
+            node-js)
+              default_dep="npm"
+              dockerfile="react_js.Dockerfile"
+              ;;
+            *)
+              default_dep="npm"
+              dockerfile="Dockerfile"
+              ;;
+          esac
+
+          if [ "$dep" = "auto" ] || [ -z "$dep" ]; then
+            dep="$default_dep"
+          fi
+
+          echo "stack=$stack" >> "$GITHUB_OUTPUT"
+          echo "selected_dependency_manager=$dep" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=$dockerfile" >> "$GITHUB_OUTPUT"
+
+          if [ -f "$GITHUB_WORKSPACE/standard_containers/docker/$dockerfile" ]; then
+            dockerfile_template="standard_containers/docker/$dockerfile"
+          elif [ -f "$GITHUB_WORKSPACE/vncc-pipeline/standard_containers/docker/$dockerfile" ]; then
+            dockerfile_template="vncc-pipeline/standard_containers/docker/$dockerfile"
+          else
+            echo "Dockerfile template '$dockerfile' was not found in the repository." >&2
+            exit 1
+          fi
+          echo "dockerfile-template=$dockerfile_template" >> "$GITHUB_OUTPUT"
+
+          echo "Technology stack: $stack"
+          echo "Dependency manager: $dep"
+          echo "Dockerfile template: $dockerfile"
+
+      # ========================  NodeJs pnpm ========================  
+      # ========================  NodeJs pnpm ========================  
+      - name: Install Node dependencies with pnpm
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'pnpm' }}
+        uses: ./.github/actions/build-test-delivery/dependencies/installation/pnpm
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          node-version: '22'
+
+      - name: Build and test pnpm project
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'pnpm' }}
+        uses: ./.github/actions/build-test-delivery/delivery/binary/pnpm
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          run-tests: ${{ env.RUN_TESTS }}
+      
+      # ========================  NodeJs npm ========================  
+      - name: Install Node dependencies with npm
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'npm' }}
+        uses: ./.github/actions/build-test-delivery/dependencies/installation/npm
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          node-version: '22'
+
+      - name: Build and test npm project
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'npm' }}
+        uses: ./.github/actions/build-test-delivery/delivery/binary/npm
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          run-tests: ${{ env.RUN_TESTS }}
+
+      # ========================  Maven ========================  
+      - name: Install Java dependencies with Maven
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'mvn' }}
+        uses: ./.github/actions/build-test-delivery/dependencies/installation/mvn
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          java-version: '21'
+
+      - name: Build and test Maven project
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'mvn' }}
+        uses: ./.github/actions/build-test-delivery/delivery/binary/maven
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          run-tests: ${{ env.RUN_TESTS }}
+
+      # ========================  Maven ========================  
+      - name: Build Docker image with reusable action
+        if: ${{ env.BUILD_CONTAINER == 'true' }}
+        uses: ./.github/actions/build-test-delivery/delivery/container/vncc_provided_docker
+        with:
+          context: ${{ env.TARGET_PATH }}
+          dockerfile-template: ${{ steps.resolve.outputs.dockerfile-template }}
+          image-name: ${{ env.DOCKER_IMAGE_NAME }}
+          tag: ${{ github.sha }}
+          cleanup: 'false'

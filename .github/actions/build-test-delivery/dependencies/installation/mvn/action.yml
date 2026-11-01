@@ -1,38 +1,95 @@
-name: "Maven installation"
-description: "Runs a Maven installation"
+name: 'Maven installation'
+description: 'Sets up Java, caches Maven dependencies, and resolves project dependencies.'
+author: 'VNCC'
+branding: {icon: package, color: blue}
 
 inputs:
   java-version:
-    description: Java version 
+    description: 'Java version for setup-java.'
     required: true
-    default: "21"
-
+    default: '21'
   service-name:
-    description: Service to run 
+    description: 'Workspace-relative Maven project directory.'
     required: true
+
+outputs:
+  result:
+    description: 'pass when Maven dependencies are resolved.'
+    value: ${{ steps.main-3.outputs.result }}
 
 runs:
-  using: "composite"
+  using: composite
   steps:
-    - name: Set up JDK
+    # =========== input section ===========
+    - name: input / step 1 - export inputs
+      shell: bash
+      env:
+        V1: ${{ inputs.java-version }}
+        V2: ${{ inputs.service-name }}
+      run: |
+        set -euo pipefail
+        [[ "$V1" =~ ^[0-9]+([.][A-Za-z0-9.+_-]+)?$ ]] || { echo "::error::java-version has invalid format"; exit 1; }
+        [[ "$V2" != *$'\n'* && "$V2" != *$'\r'* ]] || { echo "::error::service-name cannot contain newlines"; exit 1; }
+        workspace="$(realpath "$GITHUB_WORKSPACE")"
+        service_path="$(realpath -m "$workspace/$V2")"
+        case "$service_path" in
+          "$workspace"|"$workspace"/*) ;;
+          *) echo "::error::service-name must stay inside GITHUB_WORKSPACE"; exit 1 ;;
+        esac
+        {
+          printf 'IN_JAVA_VERSION=%s\n' "$V1"
+          printf 'IN_SERVICE_NAME=%s\n' "$V2"
+          printf 'IN_SERVICE_PATH=%s\n' "$service_path"
+        } >> "$GITHUB_ENV"
+
+    - name: input / step 2 - validate project
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ -d "$IN_SERVICE_PATH" ]] || { echo "::error::Maven project directory not found"; exit 1; }
+        [[ -f "$IN_SERVICE_PATH/pom.xml" ]] || { echo "::error::pom.xml not found in Maven project"; exit 1; }
+
+    # =========== setup section ===========
+    - name: setup / step 1 - Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: ${{ inputs.java-version }}
+        java-version: ${{ env.IN_JAVA_VERSION }}
 
-    # [Automated Build & Test Execution]-[AC.3]: Build must finish fast → caching + container keeps runtime < 5 min
-    - name: Set up caching for Maven dependencies
+    - name: setup / step 2 - Maven cache
       uses: actions/cache@v4
       with:
         path: ~/.m2/repository
-        # Hashing pom.xml's content -> If content
-        # changes, mean the dependency must also change
         key: maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-            maven-
+        restore-keys: maven-
 
-    # [Fast Feedback at Commit Stage]-[AC.4]: Trash dependencies detection, any unused packages will be displayed here
-    - name: Dependencies installation with Maven
-      run: mvn dependency:resolve
+    # =========== main section ===========
+    - name: main / step 1 - resolve dependencies
       shell: bash
-      working-directory: "./${{ inputs.service-name }}"
+      run: |
+        set -euo pipefail
+        cd "$IN_SERVICE_PATH"
+        mvn dependency:resolve
+
+    - name: main / step 2 - record completion
+      shell: bash
+      run: echo 'TMP_RESULT=pass' >> "$GITHUB_ENV"
+
+    - name: main / step 3 - export outputs
+      id: main-3
+      shell: bash
+      run: echo "result=$TMP_RESULT" >> "$GITHUB_OUTPUT"
+
+    # =========== output section ===========
+    - name: output / step 1 - print outputs
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.result }}
+      run: echo "result=$O1"
+
+    - name: output / step 2 - job summary
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.result }}
+      run: |
+        echo "Maven dependency installation result: $O1" >> "$GITHUB_STEP_SUMMARY"

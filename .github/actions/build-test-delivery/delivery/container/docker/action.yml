@@ -1,54 +1,125 @@
-name: "Build Docker"
-description: "Build Docker image for delivery"
+name: 'Docker delivery'
+description: 'Builds, optionally pushes, reports, and removes a Docker image.'
+author: 'VNCC'
+branding: {icon: package, color: blue}
 
 inputs:
   registry-url:
-    description: "Enable container registry access (true/false)"
-    required: true
-
+    description: 'Optional registry hostname/path prefix.'
+    default: ''
   push:
-    description: "Should be push to the registry or not"
-    required: false
+    description: 'Push the image after building; true or false.'
     default: 'false'
-
   service-name:
-    description: Service to run 
+    description: 'Workspace-relative Docker build context and image name.'
     required: true
+
+outputs:
+  image-ref:
+    description: 'Full image reference built by this action.'
+    value: ${{ steps.main-3.outputs.image-ref }}
+  image-size:
+    description: 'Image size in bytes.'
+    value: ${{ steps.main-3.outputs.image-size }}
+  result:
+    description: 'pass when image build and optional push complete.'
+    value: ${{ steps.main-3.outputs.result }}
 
 runs:
-  using: "composite"
+  using: composite
   steps:
-    - name: The full name of docker image
+    # =========== input section ===========
+    - name: input / step 1 - export inputs
       shell: bash
-      id: set-image-name
+      env:
+        V1: ${{ inputs.registry-url }}
+        V2: ${{ inputs.push }}
+        V3: ${{ inputs.service-name }}
       run: |
-          REGISTRY_URL=${{ inputs.registry-url }}
-          if [ -n "$REGISTRY_URL" ]; then
-            echo "image-name=${{ inputs.registry-url }}/${{ inputs.service-name }}" >> $GITHUB_OUTPUT
-          else
-            echo "image-name=${{ inputs.service-name }}" >> $GITHUB_OUTPUT
-          fi
+        set -euo pipefail
+        [[ "$V1" != *$'\n'* && "$V1" != *$'\r'* ]] || { echo "::error::registry-url cannot contain newlines"; exit 1; }
+        [[ "$V2" == true || "$V2" == false ]] || { echo "::error::push must be true or false"; exit 1; }
+        [[ "$V3" != *$'\n'* && "$V3" != *$'\r'* ]] || { echo "::error::service-name cannot contain newlines"; exit 1; }
+        workspace="$(realpath "$GITHUB_WORKSPACE")"
+        service_path="$(realpath -m "$workspace/$V3")"
+        case "$service_path" in
+          "$workspace"|"$workspace"/*) ;;
+          *) echo "::error::service-name must stay inside GITHUB_WORKSPACE"; exit 1 ;;
+        esac
+        [[ -d "$service_path" ]] || { echo "::error::Docker context directory not found"; exit 1; }
+        image_name="${V3#./}"
+        [[ -n "$image_name" && "$image_name" != . ]] || image_name=app
+        [[ "$image_name" =~ ^[a-z0-9]+([._/-][a-z0-9]+)*$ ]] || { echo "::error::service-name must also be a valid lowercase Docker image path"; exit 1; }
+        registry="${V1%/}"
+        [[ -z "$registry" || "$registry" =~ ^[a-zA-Z0-9.-]+(:[0-9]+)?(/[a-zA-Z0-9._-]+)*$ ]] || { echo "::error::registry-url is invalid"; exit 1; }
+        image_ref="${registry:+${registry}/}${image_name}:${GITHUB_SHA}"
+        {
+          printf 'IN_SERVICE_PATH=%s\n' "$service_path"
+          printf 'IN_PUSH=%s\n' "$V2"
+          printf 'IN_IMAGE_REF=%s\n' "$image_ref"
+        } >> "$GITHUB_ENV"
 
-    - name: Containerized application with Docker
-      shell: bash
-      run:
-        # [Automated Build & Test Execution]-[AC.6]: Build Docker image with tag contains git SHA
-        docker build -t ${{ steps.set-image-name.outputs.image-name }}:${{ github.sha }} .
-      working-directory: "./${{ inputs.service-name }}"
-
-    # [Fast Feedback at Commit Stage]-[AC.4]: Image size display here
-    - name: Docker image size
+    - name: input / step 2 - validate Dockerfile
       shell: bash
       run: |
-        #!/bin/bash
+        set -euo pipefail
+        [[ -f "$IN_SERVICE_PATH/Dockerfile" ]] || { echo "::error::Dockerfile not found in build context"; exit 1; }
 
-        docker history ${{ steps.set-image-name.outputs.image-name }}:${{ github.sha }}
-        echo
-        echo "Total Docker image size: $(docker image inspect ${{ steps.set-image-name.outputs.image-name }}:${{ github.sha }} --format='{{.Size}}' | numfmt --to=iec)"
-      working-directory: "./${{ inputs.service-name }}"
+    # =========== setup section ===========
+    # The caller provides a Docker-enabled runner and authenticates before invoking this action when pushing.
 
-    # [Fast Feedback at Commit Stage]-[AC.6]: Image size display here
-    - name: Clean docker image after build
+    # =========== main section ===========
+    - name: main / step 1 - build and optionally push
       shell: bash
-      run: docker rmi ${{ steps.set-image-name.outputs.image-name }}:${{ github.sha }}
-      working-directory: "./${{ inputs.service-name }}"
+      run: |
+        set -euo pipefail
+        cd "$IN_SERVICE_PATH"
+        docker build --tag "$IN_IMAGE_REF" .
+        docker history "$IN_IMAGE_REF"
+        image_size="$(docker image inspect "$IN_IMAGE_REF" --format='{{.Size}}')"
+        [[ "$image_size" =~ ^[0-9]+$ ]] || { echo "::error::Docker returned an invalid image size"; exit 1; }
+        echo "Total Docker image size: $(numfmt --to=iec "$image_size")"
+        if [[ "$IN_PUSH" == true ]]; then
+          docker push "$IN_IMAGE_REF"
+        fi
+        docker image rm "$IN_IMAGE_REF"
+        {
+          printf 'TMP_IMAGE_REF=%s\n' "$IN_IMAGE_REF"
+          printf 'TMP_IMAGE_SIZE=%s\n' "$image_size"
+          printf 'TMP_RESULT=pass\n'
+        } >> "$GITHUB_ENV"
+
+    - name: main / step 2 - retain completion values
+      shell: bash
+      run: test -n "$TMP_RESULT"
+
+    - name: main / step 3 - export outputs
+      id: main-3
+      shell: bash
+      run: |
+        {
+          printf 'image-ref=%s\n' "$TMP_IMAGE_REF"
+          printf 'image-size=%s\n' "$TMP_IMAGE_SIZE"
+          printf 'result=%s\n' "$TMP_RESULT"
+        } >> "$GITHUB_OUTPUT"
+
+    # =========== output section ===========
+    - name: output / step 1 - print outputs
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.image-ref }}
+        O2: ${{ steps.main-3.outputs.image-size }}
+        O3: ${{ steps.main-3.outputs.result }}
+      run: |
+        echo "image-ref=$O1"
+        echo "image-size=$O2"
+        echo "result=$O3"
+
+    - name: output / step 2 - job summary
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.image-ref }}
+        O2: ${{ steps.main-3.outputs.image-size }}
+        O3: ${{ steps.main-3.outputs.result }}
+      run: |
+        printf 'Docker delivery: %s\n\n- Image: `%s`\n- Size: %s bytes\n' "$O3" "$O1" "$O2" >> "$GITHUB_STEP_SUMMARY"

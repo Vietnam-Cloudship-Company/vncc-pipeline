@@ -1,0 +1,173 @@
+name: 'VNCC Docker build'
+description: 'Copies an optional Dockerfile template, builds an image, and optionally pushes or cleans it up.'
+author: 'VNCC'
+branding: {icon: package, color: blue}
+
+inputs:
+  context:
+    description: 'Workspace-relative Docker build context; falls back to service-name.'
+    default: ''
+  service-name:
+    description: 'Fallback context and default image name.'
+    default: '.'
+  dockerfile-template:
+    description: 'Optional workspace-relative Dockerfile template.'
+    default: ''
+  dockerfile-name:
+    description: 'Destination Dockerfile filename inside the context.'
+    default: 'Dockerfile'
+  image-name:
+    description: 'Image repository name, without registry prefix.'
+    default: ''
+  registry-url:
+    description: 'Optional registry hostname/path prefix.'
+    default: ''
+  tag:
+    description: 'Docker image tag; defaults to GITHUB_SHA.'
+    default: ''
+  push:
+    description: 'Push the image after build; true or false.'
+    default: 'false'
+  cleanup:
+    description: 'Remove the local image after build; true or false.'
+    default: 'false'
+
+outputs:
+  image-ref:
+    description: 'Fully qualified Docker image reference.'
+    value: ${{ steps.main-3.outputs.image-ref }}
+  image-size:
+    description: 'Built image size in bytes.'
+    value: ${{ steps.main-3.outputs.image-size }}
+  result:
+    description: 'pass when build and optional push complete.'
+    value: ${{ steps.main-3.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    # =========== input section ===========
+    - name: input / step 1 - export inputs
+      shell: bash
+      env:
+        V1: ${{ inputs.context }}
+        V2: ${{ inputs.service-name }}
+        V3: ${{ inputs.dockerfile-template }}
+        V4: ${{ inputs.dockerfile-name }}
+        V5: ${{ inputs.image-name }}
+        V6: ${{ inputs.registry-url }}
+        V7: ${{ inputs.tag }}
+        V8: ${{ inputs.push }}
+        V9: ${{ inputs.cleanup }}
+      run: |
+        set -euo pipefail
+        for value in "$V1" "$V2" "$V3" "$V4" "$V5" "$V6" "$V7"; do
+          [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || { echo "::error::Docker input cannot contain newlines"; exit 1; }
+        done
+        [[ "$V8" == true || "$V8" == false ]] || { echo "::error::push must be true or false"; exit 1; }
+        [[ "$V9" == true || "$V9" == false ]] || { echo "::error::cleanup must be true or false"; exit 1; }
+        [[ "$(basename "$V4")" == "$V4" ]] || { echo "::error::dockerfile-name must be a filename"; exit 1; }
+        workspace="$(realpath "$GITHUB_WORKSPACE")"
+        context_input="${V1:-$V2}"
+        context_path="$(realpath -m "$workspace/$context_input")"
+        case "$context_path" in
+          "$workspace"|"$workspace"/*) ;;
+          *) echo "::error::context must stay inside GITHUB_WORKSPACE"; exit 1 ;;
+        esac
+        [[ -d "$context_path" ]] || { echo "::error::Docker context does not exist"; exit 1; }
+        template_path=''
+        if [[ -n "$V3" ]]; then
+          template_path="$(realpath -m "$workspace/$V3")"
+          case "$template_path" in
+            "$workspace"/*) ;;
+            *) echo "::error::Dockerfile template must stay inside GITHUB_WORKSPACE"; exit 1 ;;
+          esac
+          [[ -f "$template_path" ]] || { echo "::error::Dockerfile template not found"; exit 1; }
+        fi
+        image_name="$V5"
+        if [[ -z "$image_name" ]]; then
+          image_name="${V2#./}"
+          if [[ -z "$image_name" || "$image_name" == . ]]; then image_name="$(basename "$context_path")"; fi
+          [[ "$context_path" != "$workspace" ]] || image_name=app
+        fi
+        [[ "$image_name" =~ ^[a-z0-9]+([._/-][a-z0-9]+)*$ ]] || { echo "::error::image-name is not a valid lowercase Docker image path"; exit 1; }
+        registry="${V6%/}"
+        [[ -z "$registry" || "$registry" =~ ^[a-zA-Z0-9.-]+(:[0-9]+)?(/[a-zA-Z0-9._-]+)*$ ]] || { echo "::error::registry-url is invalid"; exit 1; }
+        tag="${V7:-$GITHUB_SHA}"
+        [[ "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { echo "::error::tag is invalid"; exit 1; }
+        image_ref="${registry:+${registry}/}${image_name}:${tag}"
+        {
+          printf 'IN_CONTEXT_PATH=%s\n' "$context_path"
+          printf 'IN_TEMPLATE_PATH=%s\n' "$template_path"
+          printf 'IN_DOCKERFILE_NAME=%s\n' "$V4"
+          printf 'IN_IMAGE_REF=%s\n' "$image_ref"
+          printf 'IN_PUSH=%s\n' "$V8"
+          printf 'IN_CLEANUP=%s\n' "$V9"
+        } >> "$GITHUB_ENV"
+
+    - name: input / step 2 - validate destination
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ -n "$IN_DOCKERFILE_NAME" ]] || { echo "::error::dockerfile-name is required"; exit 1; }
+
+    # =========== setup section ===========
+    # The caller provides a Docker-enabled runner and authenticates before this action when push is true.
+
+    # =========== main section ===========
+    - name: main / step 1 - prepare Dockerfile
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -n "$IN_TEMPLATE_PATH" ]]; then
+          cp "$IN_TEMPLATE_PATH" "$IN_CONTEXT_PATH/$IN_DOCKERFILE_NAME"
+        fi
+        [[ -f "$IN_CONTEXT_PATH/$IN_DOCKERFILE_NAME" ]] || { echo "::error::Dockerfile not found in context"; exit 1; }
+
+    - name: main / step 2 - build and deliver image
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker build --file "$IN_CONTEXT_PATH/$IN_DOCKERFILE_NAME" --tag "$IN_IMAGE_REF" "$IN_CONTEXT_PATH"
+        image_size="$(docker image inspect "$IN_IMAGE_REF" --format='{{.Size}}')"
+        [[ "$image_size" =~ ^[0-9]+$ ]] || { echo "::error::Docker returned an invalid image size"; exit 1; }
+        docker history "$IN_IMAGE_REF"
+        echo "Built image size: ${image_size} bytes"
+        if [[ "$IN_PUSH" == true ]]; then docker push "$IN_IMAGE_REF"; fi
+        if [[ "$IN_CLEANUP" == true ]]; then docker image rm "$IN_IMAGE_REF"; fi
+        {
+          printf 'TMP_IMAGE_REF=%s\n' "$IN_IMAGE_REF"
+          printf 'TMP_IMAGE_SIZE=%s\n' "$image_size"
+          printf 'TMP_RESULT=pass\n'
+        } >> "$GITHUB_ENV"
+
+    - name: main / step 3 - export outputs
+      id: main-3
+      shell: bash
+      run: |
+        {
+          printf 'image-ref=%s\n' "$TMP_IMAGE_REF"
+          printf 'image-size=%s\n' "$TMP_IMAGE_SIZE"
+          printf 'result=%s\n' "$TMP_RESULT"
+        } >> "$GITHUB_OUTPUT"
+
+    # =========== output section ===========
+    - name: output / step 1 - print outputs
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.image-ref }}
+        O2: ${{ steps.main-3.outputs.image-size }}
+        O3: ${{ steps.main-3.outputs.result }}
+      run: |
+        echo "image-ref=$O1"
+        echo "image-size=$O2"
+        echo "result=$O3"
+
+    - name: output / step 2 - job summary
+      shell: bash
+      env:
+        O1: ${{ steps.main-3.outputs.image-ref }}
+        O2: ${{ steps.main-3.outputs.image-size }}
+        O3: ${{ steps.main-3.outputs.result }}
+      run: |
+        printf 'VNCC Docker build: %s\n\n- Image: `%s`\n- Size: %s bytes\n' "$O3" "$O1" "$O2" >> "$GITHUB_STEP_SUMMARY"
