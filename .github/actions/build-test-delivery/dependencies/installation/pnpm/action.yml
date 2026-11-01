@@ -1,0 +1,36 @@
+name: "PNPM installation"
+description: "Runs a pnpm install"
+
+inputs:
+  node-version:
+    description: Node version
+    required: true
+    default: "22"
+
+  service-name:
+    description: Service to run
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+
+    - name: Dependencies installation with pnpm
+      shell: bash
+      run: |
+        if [ -f pnpm-lock.yaml ]; then
+          pnpm install --frozen-lockfile
+        else
+          pnpm install
+        fi
+      working-directory: "./${{ inputs.service-name }}"

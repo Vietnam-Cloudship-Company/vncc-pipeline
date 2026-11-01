@@ -1,0 +1,149 @@
+name: "Build Docker"
+description: "Optionally inject a Dockerfile template, build an image, report its size, and optionally push it"
+
+inputs:
+  context:
+    description: "Docker build context relative to GITHUB_WORKSPACE; falls back to service-name"
+    required: false
+    default: ""
+
+  service-name:
+    description: "Legacy alias for the Docker build context"
+    required: false
+    default: "."
+
+  dockerfile-template:
+    description: "Optional Dockerfile template path relative to GITHUB_WORKSPACE"
+    required: false
+    default: ""
+
+  dockerfile-name:
+    description: "Destination Dockerfile name inside the build context"
+    required: false
+    default: "Dockerfile"
+
+  image-name:
+    description: "Image name without registry prefix; defaults to service-name or context basename"
+    required: false
+    default: ""
+
+  registry-url:
+    description: "Optional registry hostname or path prefix"
+    required: false
+    default: ""
+
+  tag:
+    description: "Image tag; defaults to the current commit SHA"
+    required: false
+    default: ""
+
+  push:
+    description: "Push the image after building (registry authentication must already be configured)"
+    required: false
+    default: "false"
+
+  cleanup:
+    description: "Remove the built image after reporting its size"
+    required: false
+    default: "false"
+
+outputs:
+  image-ref:
+    description: "Fully-qualified Docker image reference"
+    value: ${{ steps.build.outputs.image-ref }}
+
+  image-size:
+    description: "Built image size in bytes"
+    value: ${{ steps.build.outputs.image-size }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate inputs and prepare Dockerfile
+      id: prepare
+      shell: bash
+      env:
+        INPUT_CONTEXT: ${{ inputs.context }}
+        INPUT_SERVICE_NAME: ${{ inputs.service-name }}
+        INPUT_TEMPLATE: ${{ inputs.dockerfile-template }}
+        INPUT_DOCKERFILE_NAME: ${{ inputs.dockerfile-name }}
+        INPUT_IMAGE_NAME: ${{ inputs.image-name }}
+        INPUT_REGISTRY_URL: ${{ inputs.registry-url }}
+        INPUT_TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+
+        workspace="$(realpath "$GITHUB_WORKSPACE")"
+        context_input="${INPUT_CONTEXT:-$INPUT_SERVICE_NAME}"
+        context_path="$(realpath -m "$workspace/$context_input")"
+        case "$context_path" in
+          "$workspace"|"$workspace"/*) ;;
+          *) echo "Docker context must remain inside GITHUB_WORKSPACE." >&2; exit 1 ;;
+        esac
+        if [ ! -d "$context_path" ]; then
+          echo "Docker context does not exist: $context_input" >&2
+          exit 1
+        fi
+
+        dockerfile_name="${INPUT_DOCKERFILE_NAME:-Dockerfile}"
+        if [ "$(basename "$dockerfile_name")" != "$dockerfile_name" ]; then
+          echo "dockerfile-name must be a filename, not a path." >&2
+          exit 1
+        fi
+
+        if [ -n "$INPUT_TEMPLATE" ]; then
+          template_path="$(realpath -m "$workspace/$INPUT_TEMPLATE")"
+          case "$template_path" in
+            "$workspace"/*) ;;
+            *) echo "Dockerfile template must be inside GITHUB_WORKSPACE." >&2; exit 1 ;;
+          esac
+          if [ ! -f "$template_path" ]; then
+            echo "Dockerfile template was not found: $INPUT_TEMPLATE" >&2
+            exit 1
+          fi
+          cp "$template_path" "$context_path/$dockerfile_name"
+        fi
+
+        image_name="$INPUT_IMAGE_NAME"
+        if [ -z "$image_name" ]; then
+          if [ -n "$INPUT_SERVICE_NAME" ] && [ "$INPUT_SERVICE_NAME" != "." ]; then
+            image_name="$INPUT_SERVICE_NAME"
+          else
+            image_name="$(basename "$context_path")"
+            if [ "$context_path" = "$workspace" ]; then
+              image_name="app"
+            fi
+          fi
+        fi
+        image_ref="${INPUT_REGISTRY_URL:+${INPUT_REGISTRY_URL}/}${image_name}:${INPUT_TAG:-$GITHUB_SHA}"
+
+        echo "context=$context_path" >> "$GITHUB_OUTPUT"
+        echo "dockerfile=$dockerfile_name" >> "$GITHUB_OUTPUT"
+        echo "image-ref=$image_ref" >> "$GITHUB_OUTPUT"
+
+    - name: Build Docker image
+      id: build
+      shell: bash
+      env:
+        CONTEXT_PATH: ${{ steps.prepare.outputs.context }}
+        DOCKERFILE_NAME: ${{ steps.prepare.outputs.dockerfile }}
+        IMAGE_REF: ${{ steps.prepare.outputs.image-ref }}
+        PUSH_IMAGE: ${{ inputs.push }}
+        CLEANUP_IMAGE: ${{ inputs.cleanup }}
+      run: |
+        set -euo pipefail
+
+        docker build --file "$CONTEXT_PATH/$DOCKERFILE_NAME" --tag "$IMAGE_REF" "$CONTEXT_PATH"
+        image_size="$(docker image inspect "$IMAGE_REF" --format='{{.Size}}')"
+        docker history "$IMAGE_REF"
+        echo "Built image size: ${image_size} bytes"
+        echo "image-ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+        echo "image-size=$image_size" >> "$GITHUB_OUTPUT"
+
+        if [ "$PUSH_IMAGE" = "true" ]; then
+          docker push "$IMAGE_REF"
+        fi
+
+        if [ "$CLEANUP_IMAGE" = "true" ]; then
+          docker image rm "$IMAGE_REF"
+        fi
