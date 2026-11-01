@@ -95,6 +95,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with: 
+          persist-credentials: false
 
       - name: Resolve stack and toolchain
         id: resolve
@@ -150,19 +152,8 @@ jobs:
           echo "Dependency manager: $dep"
           echo "Dockerfile template: $dockerfile"
 
-      - name: Set up Java SDK for Maven builds
-        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'mvn' }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Set up Node.js for npm and pnpm builds
-        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'npm' || steps.resolve.outputs.selected_dependency_manager == 'pnpm' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
+      # ========================  NodeJs pnpm ========================  
+      # ========================  NodeJs pnpm ========================  
       - name: Install Node dependencies with pnpm
         if: ${{ steps.resolve.outputs.selected_dependency_manager == 'pnpm' }}
         uses: ./.github/actions/build-test-delivery/dependencies/installation/pnpm
@@ -170,6 +161,14 @@ jobs:
           service-name: ${{ env.TARGET_PATH }}
           node-version: '22'
 
+      - name: Build and test pnpm project
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'pnpm' }}
+        uses: ./.github/actions/build-test-delivery/delivery/binary/pnpm
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          run-tests: ${{ env.RUN_TESTS }}
+      
+      # ========================  NodeJs npm ========================  
       - name: Install Node dependencies with npm
         if: ${{ steps.resolve.outputs.selected_dependency_manager == 'npm' }}
         uses: ./.github/actions/build-test-delivery/dependencies/installation/npm
@@ -177,6 +176,14 @@ jobs:
           service-name: ${{ env.TARGET_PATH }}
           node-version: '22'
 
+      - name: Build and test npm project
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'npm' }}
+        uses: ./.github/actions/build-test-delivery/delivery/binary/npm
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          run-tests: ${{ env.RUN_TESTS }}
+
+      # ========================  Maven ========================  
       - name: Install Java dependencies with Maven
         if: ${{ steps.resolve.outputs.selected_dependency_manager == 'mvn' }}
         uses: ./.github/actions/build-test-delivery/dependencies/installation/mvn
@@ -184,61 +191,14 @@ jobs:
           service-name: ${{ env.TARGET_PATH }}
           java-version: '21'
 
-      - name: Run the build and test command
-        shell: bash
-        env:
-          SELECTED_DEPENDENCY_MANAGER: ${{ steps.resolve.outputs.selected_dependency_manager }}
-        run: |
-          set -euo pipefail
-          cd "$GITHUB_WORKSPACE"
+      - name: Build and test Maven project
+        if: ${{ steps.resolve.outputs.selected_dependency_manager == 'mvn' }}
+        uses: ./.github/actions/build-test-delivery/delivery/binary/maven
+        with:
+          service-name: ${{ env.TARGET_PATH }}
+          run-tests: ${{ env.RUN_TESTS }}
 
-          if [ ! -d "$TARGET_PATH" ]; then
-            echo "Target path '$TARGET_PATH' does not exist."
-            exit 1
-          fi
-
-          case "$SELECTED_DEPENDENCY_MANAGER" in
-            mvn)
-              cd "$TARGET_PATH"
-              if [ "${RUN_TESTS}" = "true" ]; then
-                mvn -B test
-              fi
-              mvn -B package -DskipTests
-              ;;
-            npm)
-              cd "$TARGET_PATH"
-              if [ -f package.json ]; then
-                if [ "${RUN_TESTS}" = "true" ] && node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts.test ? 0 : 1)"; then
-                  npm test -- --run
-                else
-                  echo "No npm test script detected; skipping tests."
-                fi
-                npm run build
-              else
-                echo "package.json not found in $TARGET_PATH"
-                exit 1
-              fi
-              ;;
-            pnpm)
-              cd "$TARGET_PATH"
-              if [ -f package.json ]; then
-                if [ "${RUN_TESTS}" = "true" ] && node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts.test ? 0 : 1)"; then
-                  pnpm test -- --run
-                else
-                  echo "No pnpm test script detected; skipping tests."
-                fi
-                pnpm build
-              else
-                echo "package.json not found in $TARGET_PATH"
-                exit 1
-              fi
-              ;;
-            *)
-              echo "Unsupported dependency manager: $SELECTED_DEPENDENCY_MANAGER"
-              exit 1
-              ;;
-          esac
-
+      # ========================  Maven ========================  
       - name: Build Docker image with reusable action
         if: ${{ env.BUILD_CONTAINER == 'true' }}
         uses: ./.github/actions/build-test-delivery/delivery/container/vncc_provided_docker

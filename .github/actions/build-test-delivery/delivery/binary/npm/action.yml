@@ -1,0 +1,42 @@
+name: "npm build"
+description: "Run optional npm tests and build a React JavaScript or TypeScript service"
+
+inputs:
+  service-name:
+    description: "Service directory relative to GITHUB_WORKSPACE"
+    required: true
+
+  run-tests:
+    description: "Run the npm test script when one is defined"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate npm project
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: |
+        set -euo pipefail
+        if [ ! -f package.json ]; then
+          echo "package.json not found in $PWD" >&2
+          exit 1
+        fi
+
+    - name: Run npm tests
+      if: ${{ inputs.run-tests == 'true' }}
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: |
+        set -euo pipefail
+        if node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts.test ? 0 : 1)"; then
+          npm test -- --run
+        else
+          echo "No npm test script detected; skipping tests."
+        fi
+
+    - name: Build npm project
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: npm run build

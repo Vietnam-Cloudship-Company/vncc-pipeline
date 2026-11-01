@@ -1,0 +1,28 @@
+# Source of truth for the interface. Keep descriptions terse: format|enum|default.
+name: 'MODULARIZE_ACTION_NAME'
+description: 'One line: what it does.'
+author: 'OWNER'
+branding: {icon: check, color: green}
+
+inputs:
+  path:
+    description: 'dir to process'
+    default: '.'
+  fail-on-error:
+    description: 'true|false; exit 1 on failure'
+    default: 'true'
+
+outputs:
+  result:
+    description: 'pass|fail'
+    value: ${{ steps.run.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:                       # never inline ${{ inputs.* }} in run: (injection risk)
+        IN_PATH: ${{ inputs.path }}
+        IN_FAIL: ${{ inputs.fail-on-error }}
+      run: bash "$GITHUB_ACTION_PATH/run.sh"

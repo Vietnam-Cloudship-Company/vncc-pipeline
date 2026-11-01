@@ -1,0 +1,36 @@
+name: "Maven build"
+description: "Run Maven tests when enabled and package the service"
+
+inputs:
+  service-name:
+    description: "Service directory relative to GITHUB_WORKSPACE"
+    required: true
+
+  run-tests:
+    description: "Run the Maven test phase before packaging"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate Maven project
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: |
+        set -euo pipefail
+        if [ ! -f pom.xml ]; then
+          echo "pom.xml not found in $PWD" >&2
+          exit 1
+        fi
+
+    - name: Run Maven tests
+      if: ${{ inputs.run-tests == 'true' }}
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: mvn -B test
+
+    - name: Package Maven project
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: mvn -B package -DskipTests

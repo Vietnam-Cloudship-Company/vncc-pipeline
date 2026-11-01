@@ -1,0 +1,42 @@
+name: "pnpm build"
+description: "Run optional pnpm tests and build a React JavaScript or TypeScript service"
+
+inputs:
+  service-name:
+    description: "Service directory relative to GITHUB_WORKSPACE"
+    required: true
+
+  run-tests:
+    description: "Run the pnpm test script when one is defined"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate pnpm project
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: |
+        set -euo pipefail
+        if [ ! -f package.json ]; then
+          echo "package.json not found in $PWD" >&2
+          exit 1
+        fi
+
+    - name: Run pnpm tests
+      if: ${{ inputs.run-tests == 'true' }}
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: |
+        set -euo pipefail
+        if node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts.test ? 0 : 1)"; then
+          pnpm test -- --run
+        else
+          echo "No pnpm test script detected; skipping tests."
+        fi
+
+    - name: Build pnpm project
+      shell: bash
+      working-directory: "./${{ inputs.service-name }}"
+      run: pnpm build
