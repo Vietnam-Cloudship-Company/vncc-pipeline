@@ -25,4 +25,4 @@ jobs:
     with:
       service-name: api_apache_apisix
     secrets:
-      ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+      ADMIN_KEY: "test_admin_key" # Only for testing purposes; replace with a secure key in production
