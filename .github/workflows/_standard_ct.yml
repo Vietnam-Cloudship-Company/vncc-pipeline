@@ -58,7 +58,10 @@ jobs:
           set -euo pipefail
           docker compose \
             -f "integration-yard/${SERVICE_NAME}/docker-compose.yml" \
-            up --build --abort-on-container-exit --exit-code-from integration-test
+            up --build \
+            --abort-on-container-exit \
+            --exit-code-from integration-test \
+            --attach integration-test
 
       - name: Tear down integration yard
         if: always()
