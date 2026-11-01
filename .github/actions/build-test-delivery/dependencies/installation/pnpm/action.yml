@@ -24,6 +24,7 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
         cache: pnpm
+        cache-dependency-path: ${{ inputs.service-name }}/pnpm-lock.yaml
 
     - name: Dependencies installation with pnpm
       shell: bash
