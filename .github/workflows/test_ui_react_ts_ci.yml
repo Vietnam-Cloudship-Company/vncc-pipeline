@@ -1,0 +1,32 @@
+name: UI React TypeScript CI
+
+on:
+  push:
+    paths:
+      - "standard_services/ui_react_ts/**"
+      - ".github/workflows/_standard_ci.yml"
+      - ".github/workflows/test_ui_react_ts_ci.yml"
+      - ".github/actions/build-test-delivery/dependencies/installation/pnpm/**"
+  pull_request:
+    paths:
+      - "standard_services/ui_react_ts/**"
+      - ".github/workflows/_standard_ci.yml"
+      - ".github/workflows/test_ui_react_ts_ci.yml"
+      - ".github/actions/build-test-delivery/dependencies/installation/pnpm/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-standard-ci:
+    name: Run standard CI for ui-react-ts
+    uses: ./.github/workflows/_standard_ci.yml
+    with:
+      technology_stack: react-ts
+      dependency_manager: pnpm
+      target_path: standard_services/ui_react_ts
+      run_tests: true
+      # The current ui_react_ts Dockerfile template expects a different monorepo layout.
+      # Keep this service CI focused on dependency install and app build until that template is aligned.
+      build_container: false
