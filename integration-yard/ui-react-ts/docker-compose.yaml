@@ -1,0 +1,18 @@
+services:
+  # ===================================== Main Service =====================================
+  ui-react-ts:
+    build:
+      context: ../../standard_services/ui_react_ts
+    env_file:
+      - ./catalog/ci.env
+
+  # ===================================== Functionality Test ===================================== 
+  integration-test:
+    build:
+      context: ./test-container
+    env_file:
+      - ./catalog/ci.env
+    depends_on:
+      - ui-react-ts
+
+  

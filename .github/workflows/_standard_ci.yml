@@ -136,6 +136,13 @@ jobs:
             dep="$default_dep"
           fi
 
+      - name: Inject Dockerfile template
+        if: ${{ env.BUILD_CONTAINER == 'true' }}
+        id: inject-dockerfile
+        shell: bash
+        run: |
+          set -euo pipefail
+
           echo "stack=$stack" >> "$GITHUB_OUTPUT"
           echo "selected_dependency_manager=$dep" >> "$GITHUB_OUTPUT"
           echo "dockerfile=$dockerfile" >> "$GITHUB_OUTPUT"
@@ -154,7 +161,6 @@ jobs:
           echo "Dependency manager: $dep"
           echo "Dockerfile template: $dockerfile"
 
-      # ========================  NodeJs pnpm ========================  
       # ========================  NodeJs pnpm ========================  
       - name: Install Node dependencies with pnpm
         if: ${{ steps.resolve.outputs.selected_dependency_manager == 'pnpm' }}
@@ -206,7 +212,7 @@ jobs:
         uses: ./.github/actions/build-test-delivery/delivery/container/vncc_provided_docker
         with:
           context: ${{ env.TARGET_PATH }}
-          dockerfile-template: ${{ steps.resolve.outputs.dockerfile-template }}
+          dockerfile-template: ${{ steps.inject-dockerfile.outputs.dockerfile-template }}
           image-name: ${{ env.DOCKER_IMAGE_NAME }}
           tag: ${{ github.sha }}
           cleanup: 'false'

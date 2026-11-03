@@ -1,3 +1,10 @@
+# ONLY FOR CI: This Dockerfile is used to build the service image 
+# for the `ui_react_ts` service in the integration yard. It is not 
+# intended for local development or production use. The Dockerfile 
+# is designed to be used in a multi-stage build process, where the 
+# first stage builds the React + TypeScript application and the 
+# second stage sets up a production runtime environment using Nginx.
+
 # =========================================================
 # Stage 1: Build React + TypeScript application
 # =========================================================
@@ -9,22 +16,19 @@ WORKDIR /workspace
 RUN corepack enable
 
 # Copy workspace manifests
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml ./
 
 # Copy package manifests for workspace dependency resolution
 COPY ./package.json ./package.json
-COPY packages/shared/package.json ./packages/shared/package.json
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
 # Copy application source
 COPY . .
-COPY packages/shared ./packages/shared
 
 # Build production artifact
-RUN pnpm --filter @app/web build
+RUN pnpm build
 
 # =========================================================
 # Stage 2: Production runtime
@@ -36,7 +40,7 @@ COPY ./nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy React production artifact
 COPY --from=builder \
-    /workspace/./dist \
+    /workspace/dist \
     /usr/share/nginx/html
 
 # Container health check
