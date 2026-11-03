@@ -28,7 +28,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Build production artifact
-RUN pnpm --filter @app/web build
+RUN pnpm build
 
 # =========================================================
 # Stage 2: Production runtime
