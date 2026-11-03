@@ -16,19 +16,16 @@ WORKDIR /workspace
 RUN corepack enable
 
 # Copy workspace manifests
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml ./
 
 # Copy package manifests for workspace dependency resolution
 COPY ./package.json ./package.json
-COPY packages/shared/package.json ./packages/shared/package.json
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
 # Copy application source
 COPY . .
-COPY packages/shared ./packages/shared
 
 # Build production artifact
 RUN pnpm --filter @app/web build
