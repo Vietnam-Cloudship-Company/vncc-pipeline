@@ -2,7 +2,7 @@ services:
   # ===================================== Main Service ===================================== 
   service-name:
     build:
-      context: ./svc-container
+      context: ../../standard_services/service_name
     env_file:
       - ./catalog/ci.env
     depends_on:

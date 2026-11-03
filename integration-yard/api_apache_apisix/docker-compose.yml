@@ -1,7 +1,8 @@
 services:
+  # ===================================== Main Service ===================================== 
   api_apache_apisix:
     build:
-      context: ./svc-container
+      context: ../../standard_services/api_apache_apisix
     env_file:
       - ./catalog/ci.env
     environment:
@@ -12,6 +13,22 @@ services:
     networks:
       - yard
 
+  # ===================================== Functionality Test ===================================== 
+  integration-test:
+    build:
+      context: ./test-container
+    env_file:
+      - ./catalog/ci.env
+    environment:
+      ADMIN_KEY: ${ADMIN_KEY:?Set ADMIN_KEY through the CI environment or secret store}
+    depends_on:
+      - api_apache_apisix
+    networks:
+      - yard
+    expose:
+      - "8081"
+
+  # ===================================== Service Dependencies =====================================
   etcd:
     image: quay.io/coreos/etcd:v3.5.17
     command:
@@ -31,20 +48,6 @@ services:
       retries: 12
     networks:
       - yard
-
-  integration-test:
-    build:
-      context: ./test-container
-    env_file:
-      - ./catalog/ci.env
-    environment:
-      ADMIN_KEY: ${ADMIN_KEY:?Set ADMIN_KEY through the CI environment or secret store}
-    depends_on:
-      - api_apache_apisix
-    networks:
-      - yard
-    expose:
-      - "8081"
 
 networks:
   yard:
