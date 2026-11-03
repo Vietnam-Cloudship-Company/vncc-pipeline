@@ -23,6 +23,7 @@ jobs:
     name: Run standard CT for api_apache_apisix
     uses: ./.github/workflows/_standard_ct.yml
     with:
-      service-name: api_apache_apisix
+      integration-environment: >-
+        {"SERVICE_NAME":"api_apache_apisix","YARD_NAME":"api_apache_apisix"}
     secrets:
       ADMIN_KEY: "test_admin_key" # Only for testing purposes; replace with a secure key in production

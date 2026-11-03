@@ -3,20 +3,14 @@
 Copy this directory to `vncc-pipeline/integration-yard/<service-name>/` and
 replace every `service-name` and `REPLACE_WITH_*` placeholder before use.
 
-## CI staging prerequisite
+## Service build context
 
-The service build context is intentionally empty in source control. Before
-running Compose, CI must stage the selected service implementation (including
-its Dockerfile and required configuration) into `svc-container/`. For example,
-from the repository root:
-
-```sh
-cp -a "vncc-pipeline/standard_services/<service-name>/." \
-  "vncc-pipeline/integration-yard/<service-name>/svc-container/"
-```
-
-Remove `svc-container/.gitkeep` only from the transient CI workspace if needed
-before staging. Do not commit the staged service files into this yard.
+The service image builds directly from
+`vncc-pipeline/standard_services/<service-directory>/`; update the service
+context in `docker-compose.yml` to the exact source directory name. The source
+directory must contain the Dockerfile and configuration required by Compose.
+Do not copy the service into `svc-container/`. Preserve `.gitkeep` there if
+that directory exists in the template.
 
 ## Configure and run
 
@@ -27,8 +21,13 @@ before staging. Do not commit the staged service files into this yard.
    secrets through the CI secret mechanism; do not store them in this yard.
 4. Adapt or replace the HTTP checks in `test-container/` if the service uses a
    different protocol or has a different response contract.
-5. From this directory, run `docker compose build` followed by
-   `docker compose up --abort-on-container-exit --exit-code-from integration-test`.
+5. From this directory, run:
+
+   ```sh
+   docker compose -f docker-compose.yml build
+   docker compose -f docker-compose.yml up \
+     --abort-on-container-exit --exit-code-from integration-test
+   ```
 
 Compose starts the service before the test container. The readiness test polls
 the configured URL for a bounded period because this template does not assume a

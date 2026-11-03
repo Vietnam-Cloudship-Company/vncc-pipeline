@@ -8,11 +8,6 @@ and adds tests for the APISIX Admin API and data-plane routing.
 `svc-container/` is intentionally empty in source control. From the repository
 root, CI must stage the service implementation before building:
 
-```sh
-cp -a "vncc-pipeline/standard_services/api_apache_apisix/." \
-  "vncc-pipeline/integration-yard/api_apache_apisix/svc-container/"
-```
-
 Remove `svc-container/.gitkeep` only from the transient CI workspace if needed.
 Do not commit staged service files into this yard.
 
