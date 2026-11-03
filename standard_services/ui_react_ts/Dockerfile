@@ -1,3 +1,10 @@
+# ONLY FOR CI: This Dockerfile is used to build the service image 
+# for the `ui_react_ts` service in the integration yard. It is not 
+# intended for local development or production use. The Dockerfile 
+# is designed to be used in a multi-stage build process, where the 
+# first stage builds the React + TypeScript application and the 
+# second stage sets up a production runtime environment using Nginx.
+
 # =========================================================
 # Stage 1: Build React + TypeScript application
 # =========================================================
