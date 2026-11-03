@@ -3,14 +3,14 @@ name: Standard CT
 on:
   workflow_call:
     inputs:
-      service-name:
-        description: Name of the service and its integration-yard directory
+      integration-environment:
+        description: JSON object of non-secret environment variables for the yard; must include SERVICE_NAME and YARD_NAME
         required: true
         type: string
     secrets:
       ADMIN_KEY:
-        description: APISIX Admin API key used by the integration yard
-        required: true
+        description: Optional secret required by yards that use ADMIN_KEY
+        required: false
 
 permissions:
   contents: read
@@ -22,42 +22,91 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Stage service in integration yard
+      - name: Load integration environment
         env:
-          SERVICE_NAME: ${{ inputs.service-name }}
+          INTEGRATION_ENVIRONMENT: ${{ inputs.integration-environment }}
+        shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "$SERVICE_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-            echo "Invalid service name" >&2
+          # [1/3]: Validate the environment JSON and required identifiers.
+          echo "[1/3] Validating integration environment"
+          if ! jq -e '
+            type == "object"
+            and has("SERVICE_NAME")
+            and has("YARD_NAME")
+            and all(
+              to_entries[];
+              (.key
+                | type == "string"
+                and test("^[A-Z_][A-Z0-9_]*$")
+                and (test("^(GITHUB_|RUNNER_|ACTIONS_|NODE_OPTIONS$|PATH$|LD_PRELOAD$|BASH_ENV$|ENV$|HOME$|SHELL$|PWD$|COMPOSE_FILE_PATH$|INTEGRATION_ENVIRONMENT$)") | not)
+                and (test("(^|_)(PASSWORD|TOKEN|SECRET|API_KEY|ADMIN_KEY)$") | not))
+              and (.value | type == "string" and (test("[\\r\\n\\t]") | not))
+            )
+            and (.SERVICE_NAME | type == "string" and test("^[a-zA-Z0-9_-]+$"))
+            and (.YARD_NAME | type == "string" and test("^[a-zA-Z0-9_-]+$"))
+          ' <<< "$INTEGRATION_ENVIRONMENT" >/dev/null; then
+            echo "Invalid integration environment JSON or value" >&2
             exit 1
           fi
 
-          service_dir="standard_services/${SERVICE_NAME}"
-          yard_dir="integration-yard/${SERVICE_NAME}"
-          if [[ ! -f "${service_dir}/Dockerfile" || ! -d "$yard_dir/svc-container" ]]; then
-            echo "Service Dockerfile or integration-yard staging directory is missing" >&2
+          SERVICE_NAME="$(jq -r '.SERVICE_NAME' <<< "$INTEGRATION_ENVIRONMENT")"
+          YARD_NAME="$(jq -r '.YARD_NAME' <<< "$INTEGRATION_ENVIRONMENT")"
+
+          # [2/3]: Export the validated non-secret values for later workflow steps.
+          echo "[2/3] Exporting integration environment"
+          while IFS= read -r name; do
+            value="$(jq -r --arg name "$name" '.[$name]' <<< "$INTEGRATION_ENVIRONMENT")"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          done < <(jq -r 'keys[]' <<< "$INTEGRATION_ENVIRONMENT")
+
+          # [3/3]: Resolve the yard Compose file and stage legacy svc-container builds.
+          echo "[3/3] Resolving integration yard"
+          yard_dir="integration-yard/${YARD_NAME}"
+          compose_file="${yard_dir}/docker-compose.yml"
+          if [[ ! -f "$compose_file" && -f "${yard_dir}/docker-compose.yaml" ]]; then
+            compose_file="${yard_dir}/docker-compose.yaml"
+          fi
+          if [[ ! -f "$compose_file" ]]; then
+            echo "No docker-compose.yml or docker-compose.yaml found for the integration yard" >&2
             exit 1
           fi
 
-          rm -f "${yard_dir}/svc-container/.gitkeep"
-          cp -a "${service_dir}/." "${yard_dir}/svc-container/"
+          printf 'COMPOSE_FILE_PATH=%s\n' "$compose_file" >> "$GITHUB_ENV"
+
+          # Support existing yards that still use the template's former staging context.
+          if grep --fixed-strings --quiet 'context: ./svc-container' "$compose_file"; then
+            echo "Legacy svc-container build context detected; staging service sources"
+            service_dir="standard_services/${SERVICE_NAME}"
+            if [[ ! -f "${service_dir}/Dockerfile" || ! -d "${yard_dir}/svc-container" ]]; then
+              echo "Service Dockerfile or svc-container staging directory is missing" >&2
+              exit 1
+            fi
+
+            rm -f "${yard_dir}/svc-container/.gitkeep"
+            cp -a "${service_dir}/." "${yard_dir}/svc-container/"
+          fi
 
       - name: Validate Compose configuration
         env:
-          SERVICE_NAME: ${{ inputs.service-name }}
           ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+        shell: bash
         run: |
           set -euo pipefail
-          docker compose -f "integration-yard/${SERVICE_NAME}/docker-compose.yml" config --quiet
+          # [1/1]: Validate the selected yard's Compose configuration.
+          echo "[1/1] Validating Compose configuration"
+          docker compose -f "$COMPOSE_FILE_PATH" config --quiet
 
       - name: Run integration tests
         env:
-          SERVICE_NAME: ${{ inputs.service-name }}
           ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+        shell: bash
         run: |
           set -euo pipefail
+          # [1/1]: Build and run the integration test service.
+          echo "[1/1] Building and running integration tests"
           docker compose \
-            -f "integration-yard/${SERVICE_NAME}/docker-compose.yml" \
+            -f "$COMPOSE_FILE_PATH" \
             up --build \
             --abort-on-container-exit \
             --exit-code-from integration-test \
@@ -66,10 +115,16 @@ jobs:
       - name: Tear down integration yard
         if: always()
         env:
-          SERVICE_NAME: ${{ inputs.service-name }}
           ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+        shell: bash
         run: |
           set -euo pipefail
+          # [1/1]: Remove containers, networks, and volumes from this yard.
+          echo "[1/1] Tearing down integration yard"
+          if [[ ! -f "${COMPOSE_FILE_PATH:-}" ]]; then
+            echo "Integration Compose file was not resolved; nothing to tear down"
+            exit 0
+          fi
           docker compose \
-            -f "integration-yard/${SERVICE_NAME}/docker-compose.yml" \
+            -f "$COMPOSE_FILE_PATH" \
             down --volumes --remove-orphans

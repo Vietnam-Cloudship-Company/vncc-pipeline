@@ -5,9 +5,7 @@ on:
     paths:
       - "standard_services/ui_react_ts/**"
       - ".github/workflows/_standard_ci.yml"
-      - ".github/workflows/_standard_ct.yml"
       - ".github/workflows/test_ui_react_ts_ci.yml"
-      - "integration-yard/ui-react-ts/**"
       - ".github/actions/build-test-delivery/dependencies/installation/pnpm/**"
   pull_request:
     paths:
@@ -36,6 +34,7 @@ jobs:
       build_container: false
   integration-test:
     name: Run standard CT for ui-react-ts
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/_standard_ct.yml
     with:
       integration-environment: >-
