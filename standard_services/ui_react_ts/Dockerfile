@@ -40,7 +40,7 @@ COPY ./nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy React production artifact
 COPY --from=builder \
-    /workspace/./dist \
+    /workspace/dist \
     /usr/share/nginx/html
 
 # Container health check
