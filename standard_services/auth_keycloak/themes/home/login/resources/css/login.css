@@ -1,0 +1,22 @@
+.login-pf body {
+  background: #f4f2ec;
+}
+
+#kc-header-wrapper {
+  background: url("../img/home-logo.svg") no-repeat center top;
+  background-size: 48px 48px;
+  color: #173b35;
+  font-size: 1.8rem;
+  font-weight: 700;
+  padding-top: 3rem;
+}
+
+.card-pf {
+  border-top: 4px solid #377f68;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.5rem 1.5rem rgb(23 59 53 / 12%);
+}
+
+.pf-c-button.pf-m-primary {
+  background-color: #377f68;
+}

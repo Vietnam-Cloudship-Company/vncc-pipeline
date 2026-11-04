@@ -1,0 +1,39 @@
+services:
+  auth_keycloak:
+    build:
+      context: ../../standard_services/auth_keycloak
+    env_file:
+      - ./catalog/ci.env
+    environment:
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?Set KC_DB_PASSWORD through CI secrets}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Set KC_BOOTSTRAP_ADMIN_PASSWORD through CI secrets}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  integration-test:
+    build:
+      context: ./test-container
+    env_file:
+      - ./catalog/ci.env
+    environment:
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Set KC_BOOTSTRAP_ADMIN_PASSWORD through CI secrets}
+    depends_on:
+      - auth_keycloak
+
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - ./catalog/ci.env
+    environment:
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:?Set KC_DB_PASSWORD through CI secrets}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.27.8
