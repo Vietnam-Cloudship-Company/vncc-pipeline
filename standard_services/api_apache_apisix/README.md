@@ -1,25 +1,23 @@
 # Apache APISIX standard service
 
-This directory builds a reusable Apache APISIX gateway image with the
-repository's `config.yaml`. The image is based on `apache/apisix:3.19.0-debian`.
+This directory builds the API gateway image on `apache/apisix:3.19.0-debian`.
+It runs in standalone declarative-YAML mode: no etcd or Admin API is enabled.
+The only exposed listener is the client-facing HTTP proxy on port `9080`.
 
-## Runtime requirements
+The configured `/api/v1/files` route strips `/api/v1` before forwarding to the
+file-storage upstream. `/healthz` is answered by APISIX. Other paths receive a
+JSON `404` error envelope. The upstream has active `/healthz` checks, 3-second
+connect and 60-second send/read timeouts by default, and the proxy is configured
+for a 25 MiB request limit with request/response buffering disabled.
 
-- APISIX uses etcd at `http://etcd:2379` for its traditional deployment
-  configuration provider. Run an etcd service on the Compose network with the
-  DNS name `etcd`, or update `deployment.etcd.host` in `config.yaml`.
-- The proxy listens on port `9080`; the Admin API listens on port `9180`.
-- `ADMIN_KEY` must be supplied through the runtime environment. Do not commit
-  production keys. APISIX expands `${{ADMIN_KEY}}` from its environment.
-- The current `allow_admin` network is `172.30.0.0/24`. Restrict this CIDR to
-  the trusted management network in each deployment; do not expose the Admin
-  API publicly.
+| Variable | Default | Purpose |
+|---|---|---|
+| `FILE_STORAGE_UPSTREAM` | `file_storage_go:80` | Upstream DNS name or IP and port |
+| `GATEWAY_HTTP_PORT` | `9080` | Host port mapped to the proxy listener |
+| `UPSTREAM_CONNECT_TIMEOUT_SECONDS` | `3` | Upstream connection timeout |
+| `UPSTREAM_SEND_TIMEOUT_SECONDS` | `60` | Upstream send timeout |
+| `UPSTREAM_READ_TIMEOUT_SECONDS` | `60` | Upstream read timeout |
 
-Build from this directory after supplying deployment configuration:
-
-```sh
-docker build -t api-apache-apisix .
-```
-
-The integration-yard stages this directory into its temporary `svc-container/`
-build context before building the image.
+Run locally with `docker compose up --build` from this directory. The integration
+yard builds directly from this service directory; it does not stage files into
+`svc-container/`.

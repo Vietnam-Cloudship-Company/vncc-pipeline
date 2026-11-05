@@ -14,12 +14,23 @@ if [[ -n "${SMTP_USERNAME:-}" && -z "${SMTP_PASSWORD:-}" ]] || [[ -n "${SMTP_PAS
   exit 1
 fi
 
+ui_redirect_uris="${UI_REDIRECT_URIS:-http://localhost:5173/}"
+ui_web_origins="${UI_WEB_ORIGINS:-http://localhost:5173}"
+if [[ -z "${ui_redirect_uris//[[:space:],]/}" || -z "${ui_web_origins//[[:space:],]/}" ]]; then
+  echo "UI_REDIRECT_URIS and UI_WEB_ORIGINS must each contain at least one URL" >&2
+  exit 1
+fi
+if [[ "$ui_redirect_uris" == *'*'* || "$ui_web_origins" == *'*'* ]]; then
+  echo "UI_REDIRECT_URIS and UI_WEB_ORIGINS must use exact URLs, not wildcards" >&2
+  exit 1
+fi
+
 import_dir=/opt/keycloak/data/import
 mkdir -p "$import_dir"
 
 jq \
-  --arg redirect_uris "${UI_REDIRECT_URIS:-http://localhost:5173/*}" \
-  --arg web_origins "${UI_WEB_ORIGINS:-http://localhost:5173}" \
+  --arg redirect_uris "$ui_redirect_uris" \
+  --arg web_origins "$ui_web_origins" \
   --arg smtp_host "${SMTP_HOST:-}" \
   --arg smtp_port "${SMTP_PORT:-1025}" \
   --arg smtp_from "${SMTP_FROM:-no-reply@home.local}" \

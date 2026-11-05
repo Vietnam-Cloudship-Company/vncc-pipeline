@@ -17,6 +17,11 @@ Supply `KC_DB_PASSWORD` and `KC_BOOTSTRAP_ADMIN_PASSWORD` from the CI secret
 store or the local environment. They are required by Compose and are not
 stored in `catalog/ci.env`.
 
+The realm/client contract test verifies the realm imported into the yard's
+fresh PostgreSQL database. The yard does not declare a persistent database
+volume; use `docker compose down -v` before a run when reusing an existing
+Compose project to ensure realm import is exercised from a clean start.
+
 From this directory, run:
 
 ```sh

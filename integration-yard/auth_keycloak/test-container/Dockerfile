@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y bash ca-certificates curl jq \
+    && apt-get install --no-install-recommends -y bash ca-certificates curl jq openssl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /yard

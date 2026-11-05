@@ -22,4 +22,26 @@ if ! printf '%s' "$discovery" \
   exit 1
 fi
 
-echo "OIDC discovery document contains the expected issuer and endpoints"
+jwks_uri="$(printf '%s' "$discovery" | jq --exit-status --raw-output '.jwks_uri')" || {
+  echo "OIDC discovery document did not provide a JWKS URI" >&2
+  exit 1
+}
+jwks="$(curl --fail --silent --show-error --max-time 10 "$jwks_uri")" || {
+  echo "Keycloak JWKS endpoint did not return a successful response" >&2
+  exit 1
+}
+
+if ! printf '%s' "$jwks" \
+  | jq --exit-status '
+      (.keys | type == "array" and length > 0)
+      and any(.keys[];
+        (.kid | type == "string" and length > 0)
+        and (.kty | type == "string" and length > 0)
+        and .use == "sig"
+      )
+    ' >/dev/null; then
+  echo "JWKS does not contain a usable signing key" >&2
+  exit 1
+fi
+
+echo "OIDC discovery and JWKS contain the expected issuer, endpoints, and signing key"

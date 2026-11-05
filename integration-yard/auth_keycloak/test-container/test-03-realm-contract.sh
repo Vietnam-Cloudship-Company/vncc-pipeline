@@ -72,6 +72,8 @@ if ! printf '%s' "$ui_clients" \
       and (.[0].directAccessGrantsEnabled | not)
       and (.[0].implicitFlowEnabled | not)
       and .[0].attributes["pkce.code.challenge.method"] == "S256"
+      and .[0].redirectUris == ["http://localhost:5173/callback"]
+      and .[0].webOrigins == ["http://localhost:5173"]
     ' >/dev/null; then
   echo "The home-ui client does not enforce the required public PKCE flow" >&2
   exit 1

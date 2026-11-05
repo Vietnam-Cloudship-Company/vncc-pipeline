@@ -1,41 +1,17 @@
 apisix:
   node_listen:
     - 9080
-
   enable_ipv6: false
-
-  enable_control: true
-
-  enable_admin: true
-
-  proxy_cache:
-    cache_ttl: 10s
+  enable_admin: false
+  enable_control: false
 
 deployment:
-  role: traditional
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
 
-  role_traditional:
-    config_provider: etcd
-
-  admin:
-    admin_listen:
-      ip: 0.0.0.0
-      port: 9180
-
-    # Allow the Docker network to access Admin API.
-    # Restrict further in production.
-    allow_admin:
-      - 172.30.0.0/24
-
-    admin_key:
-      - name: admin
-        key: ${{ADMIN_KEY}}
-        role: admin
-
-  etcd:
-    host:
-      - http://etcd:2379
-
-    prefix: /apisix
-
-    timeout: 30
+nginx_config:
+  http_server_configuration_snippet: |
+    client_max_body_size 25m;
+    proxy_request_buffering off;
+    proxy_buffering off;

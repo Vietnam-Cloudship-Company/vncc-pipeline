@@ -15,7 +15,8 @@ directory:
 - Set `KC_HOSTNAME` to the externally reachable Keycloak URL in each
   deployment. Use HTTPS and keep the admin console on a trusted network.
 - `UI_REDIRECT_URIS` and `UI_WEB_ORIGINS` are comma-separated values applied to
-  the imported `home-ui` client. Use exact production URLs.
+  the imported `home-ui` client. Use exact URLs without wildcards; the local
+  defaults are `http://localhost:5173/` and `http://localhost:5173`.
 - `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM` configure realm email when
   provided. `SMTP_USERNAME` and `SMTP_PASSWORD` are optional and must be
   supplied together. `SMTP_STARTTLS` defaults to `true`; `SMTP_SSL` defaults

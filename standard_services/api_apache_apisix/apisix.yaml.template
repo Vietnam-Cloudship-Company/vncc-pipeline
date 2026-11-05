@@ -1,0 +1,69 @@
+upstreams:
+  - id: file-storage
+    type: roundrobin
+    nodes:
+      "__FILE_STORAGE_UPSTREAM__": 1
+    timeout:
+      connect: __CONNECT_TIMEOUT_SECONDS__
+      send: __SEND_TIMEOUT_SECONDS__
+      read: __READ_TIMEOUT_SECONDS__
+    checks:
+      active:
+        type: http
+        http_path: /healthz
+        timeout: 1
+        healthy:
+          interval: 5
+          successes: 1
+        unhealthy:
+          interval: 5
+          http_failures: 3
+          tcp_failures: 3
+          timeouts: 3
+
+routes:
+  - id: healthz
+    uri: /healthz
+    plugins:
+      mocking:
+        response_status: 200
+        content_type: application/json
+        response_example: '{"status":"ok"}'
+
+  - id: files-v1
+    uris:
+      - /api/v1/files
+      - /api/v1/files/*
+    upstream_id: file-storage
+    plugins:
+      proxy-rewrite:
+        regex_uri:
+          - "^/api/v1"
+          - ""
+
+  - id: unmatched-path
+    uri: /*
+    priority: -1
+    plugins:
+      serverless-pre-function:
+        phase: access
+        functions:
+          - |
+            return function()
+              local request_id = ngx.var.request_id
+              if not request_id or request_id == "" then
+                request_id = ngx.md5(tostring(ngx.now()) .. ":" .. tostring(math.random()) .. ":" .. tostring(ngx.worker.pid()))
+              end
+              ngx.header["X-Request-Id"] = request_id
+              ngx.header["Content-Type"] = "application/json; charset=utf-8"
+              ngx.status = 404
+              ngx.say(require("cjson.safe").encode({
+                error = {
+                  code = "not_found",
+                  message = "Route not found",
+                  request_id = request_id
+                }
+              }))
+              return ngx.exit(404)
+            end
+#END
