@@ -17,7 +17,7 @@ that directory exists in the template.
 1. Replace the service name in `docker-compose.yml` and in `catalog/ci.env`.
 2. Set `SERVICE_URL` to the service's Compose-DNS HTTP URL and path, and set
    `EXPECTED_RESPONSE_TEXT` to a stable response fragment for the service.
-3. Add any service-specific, non-secret settings to `catalog/ci.env`. Inject
+3. Add any service-specific by reading in the `.env.template.integration` in `vncc-pipeline/standard_services/<service-directory>/`, non-secret settings to `catalog/ci.env`. Inject
    secrets through the CI secret mechanism; do not store them in this yard.
 4. Adapt or replace the HTTP checks in `test-container/` if the service uses a
    different protocol or has a different response contract.
