@@ -1,3 +1,4 @@
+# Render this template outside the image and mount the resulting routes file.
 upstreams:
   - id: file-storage
     type: roundrobin

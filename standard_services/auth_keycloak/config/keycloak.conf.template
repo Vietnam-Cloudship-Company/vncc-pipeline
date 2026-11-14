@@ -1,3 +1,4 @@
+# Render this template outside the image and mount the resulting Keycloak config.
 db=postgres
 health-enabled=true
 metrics-enabled=true

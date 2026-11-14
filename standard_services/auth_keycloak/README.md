@@ -1,26 +1,32 @@
 # auth_keycloak
 
 Keycloak provides the `home` realm for platform sign-in, household roles, and
-OIDC/JWT tokens. The image imports [`realm-home.json`](./realm-home.json) on
-first start, enables health and metrics endpoints, and uses PostgreSQL.
+OIDC/JWT tokens. Configuration and theme templates live in [`config/`](./config/)
+and are excluded from the Docker build context. Render and mount the config files
+at runtime; the image does not contain realm data or custom themes.
 
 ## Runtime configuration
 
 Required secrets are injected at runtime; they are not stored in this
 directory:
 
+- `KEYCLOAK_CONFIG_FILE` is the absolute path to the mounted, rendered
+  `keycloak.conf`.
+- `KEYCLOAK_REALM_FILE` is the absolute path to the mounted, rendered realm
+  import JSON file.
+- `KEYCLOAK_THEME_DIR` is the absolute path to the mounted `home` theme
+  directory.
 - `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` create the
   initial Keycloak administrator.
 - `KC_DB_URL`, `KC_DB_USERNAME`, and `KC_DB_PASSWORD` configure PostgreSQL.
 - Set `KC_HOSTNAME` to the externally reachable Keycloak URL in each
   deployment. Use HTTPS and keep the admin console on a trusted network.
-- `UI_REDIRECT_URIS` and `UI_WEB_ORIGINS` are comma-separated values applied to
-  the imported `home-ui` client. Use exact URLs without wildcards; the local
-  defaults are `http://localhost:5173/` and `http://localhost:5173`.
-- `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM` configure realm email when
-  provided. `SMTP_USERNAME` and `SMTP_PASSWORD` are optional and must be
-  supplied together. `SMTP_STARTTLS` defaults to `true`; `SMTP_SSL` defaults
-  to `false`.
+- The `home-ui` redirect URIs, web origins, and any realm SMTP settings must
+  be rendered into the mounted realm JSON before startup.
+
+The entrypoint only maps these file and directory paths to Keycloak's native
+locations and starts Keycloak. It does not render, validate, or modify the
+templates.
 
 The demo seed script is opt-in. Set `SEED_DEMO_DATA=true` and provide
 `DEMO_ADMIN_PASSWORD`, `DEMO_ADULT_PASSWORD`, and `DEMO_CHILD_PASSWORD` through
