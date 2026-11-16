@@ -1,0 +1,33 @@
+name: Keycloak Continuous Testing
+
+on:
+  push:
+    paths:
+      - "standard_services/auth_keycloak/**"
+      - "integration-yard/auth_keycloak/**"
+      - ".github/workflows/_standard_ct.yml"
+      - ".github/workflows/test_auth_keycloak.yml"
+  pull_request:
+    paths:
+      - "standard_services/auth_keycloak/**"
+      - "integration-yard/auth_keycloak/**"
+      - ".github/workflows/_standard_ct.yml"
+      - ".github/workflows/test_auth_keycloak.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration-test:
+    name: Run standard CT for auth_keycloak (${{ matrix.product }})
+    strategy:
+      matrix:
+        product: [household]
+    uses: ./.github/workflows/_standard_ct.yml
+    with:
+      integration-environment: >-
+        {"SERVICE_NAME":"auth_keycloak","YARD_NAME":"auth_keycloak","PRODUCT":"${{ matrix.product }}"}
+    secrets:
+      KC_DB_PASSWORD: "test_db_password"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "test_bootstrap_admin_password"

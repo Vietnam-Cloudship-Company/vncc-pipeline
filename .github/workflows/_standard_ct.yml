@@ -11,6 +11,12 @@ on:
       ADMIN_KEY:
         description: Optional secret required by yards that use ADMIN_KEY
         required: false
+      KC_DB_PASSWORD:
+        description: Optional test secret required by the Keycloak yard
+        required: false
+      KC_BOOTSTRAP_ADMIN_PASSWORD:
+        description: Optional test secret required by the Keycloak yard
+        required: false
 
 permissions:
   contents: read
@@ -90,6 +96,8 @@ jobs:
       - name: Validate Compose configuration
         env:
           ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+          KC_DB_PASSWORD: ${{ secrets.KC_DB_PASSWORD }}
+          KC_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.KC_BOOTSTRAP_ADMIN_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
@@ -100,6 +108,8 @@ jobs:
       - name: Run integration tests
         env:
           ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+          KC_DB_PASSWORD: ${{ secrets.KC_DB_PASSWORD }}
+          KC_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.KC_BOOTSTRAP_ADMIN_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
@@ -116,6 +126,8 @@ jobs:
         if: always()
         env:
           ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+          KC_DB_PASSWORD: ${{ secrets.KC_DB_PASSWORD }}
+          KC_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.KC_BOOTSTRAP_ADMIN_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail

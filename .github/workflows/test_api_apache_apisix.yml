@@ -20,10 +20,13 @@ permissions:
 
 jobs:
   integration-test:
-    name: Run standard CT for api_apache_apisix
+    name: Run standard CT for api_apache_apisix (${{ matrix.product }})
+    strategy:
+      matrix:
+        product: [household]
     uses: ./.github/workflows/_standard_ct.yml
     with:
       integration-environment: >-
-        {"SERVICE_NAME":"api_apache_apisix","YARD_NAME":"api_apache_apisix"}
+        {"SERVICE_NAME":"api_apache_apisix","YARD_NAME":"api_apache_apisix","PRODUCT":"${{ matrix.product }}"}
     secrets:
       ADMIN_KEY: "test_admin_key" # Only for testing purposes; replace with a secure key in production
