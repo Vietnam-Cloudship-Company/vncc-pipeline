@@ -5,8 +5,14 @@ services:
     env_file:
       - ./catalog/ci.env
     environment:
+      PRODUCT: ${PRODUCT:-household}
       KC_DB_PASSWORD: ${KC_DB_PASSWORD:?Set KC_DB_PASSWORD through CI secrets}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Set KC_BOOTSTRAP_ADMIN_PASSWORD through CI secrets}
+    volumes:
+      - type: bind
+        source: ../../standard_services/auth_keycloak/config/${PRODUCT:-household}
+        target: /opt/keycloak/product-config
+        read_only: true
     depends_on:
       postgres:
         condition: service_healthy

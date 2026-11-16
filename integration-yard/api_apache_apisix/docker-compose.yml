@@ -6,7 +6,13 @@ services:
     env_file:
       - ./catalog/ci.env
     environment:
+      PRODUCT: ${PRODUCT:-house}
       ADMIN_KEY: ${ADMIN_KEY:?Set ADMIN_KEY through the CI environment or secret store}
+    volumes:
+      - type: bind
+        source: ../../standard_services/api_apache_apisix/config/${PRODUCT:-house}
+        target: /etc/apisix/product-config
+        read_only: true
     depends_on:
       etcd:
         condition: service_healthy

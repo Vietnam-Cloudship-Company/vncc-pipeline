@@ -34,3 +34,8 @@ docker compose -f docker-compose.yml down -v
 
 The test runner polls the health endpoint at `http://auth_keycloak:9000` with a
 bounded timeout. No service port is published to the host by this yard.
+
+The service mounts
+`standard_services/auth_keycloak/config/${PRODUCT}` read-only; `PRODUCT`
+defaults to `household`. Override `PRODUCT` in the Compose environment to
+select another product directory.

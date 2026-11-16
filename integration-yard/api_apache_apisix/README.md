@@ -30,3 +30,9 @@ uses etcd at `etcd:2379`. The test container starts a local mock backend, polls
 the APISIX Admin API with a bounded timeout, creates a temporary proxy route,
 verifies a response through the gateway, and removes the route and temporary
 consumer it created.
+
+The service mounts `standard_services/api_apache_apisix/config/${PRODUCT}` as
+read-only configuration; `PRODUCT` defaults to `house`. Override `PRODUCT` in
+the Compose environment to select another product directory. Render the
+selected templates to `config.yaml` and `apisix.yaml` in that directory before
+starting the yard; the entrypoint only links the configured files.
