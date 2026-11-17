@@ -1,0 +1,516 @@
+openapi: 3.1.0
+info:
+  title: Household File Service API
+  version: 1.0.0
+  description: |
+    Contract for Functionality 1 of the household MVP file service.
+    All operations are household-scoped using the verified bearer token.
+    File bytes are inspected by the service; a caller-supplied media type is
+    not trusted. The current Gin scaffold returns 501 for file operations.
+servers:
+  - url: /api/v1
+    description: API gateway route prefix
+tags:
+  - name: Files
+    description: Household file metadata and content
+security:
+  - bearerAuth: []
+paths:
+  /files:
+    post:
+      operationId: uploadFile
+      tags: [Files]
+      summary: Upload a household file
+      description: |
+        Uploads a file no larger than 25 MB. The service detects and validates
+        the file type from its bytes, applies household quota limits, assigns
+        a numeric suffix when a name conflicts, and returns the SHA-256 digest.
+        The default household quota is 5 GB.
+        Upload and download are streamed. A failed upload must not leave an
+        object or metadata row.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file, folder_id, visibility]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File bytes to upload.
+                folder_id:
+                  type: string
+                  description: Destination folder identifier.
+                visibility:
+                  $ref: "#/components/schemas/FileVisibility"
+                description:
+                  type: string
+                  description: Optional user-facing description.
+            examples:
+              householdDocument:
+                summary: Upload a household-visible document
+                value:
+                  file: "<binary file content>"
+                  folder_id: "folder_01"
+                  visibility: household
+                  description: Family insurance document
+      responses:
+        "201":
+          description: File uploaded and metadata created.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+            Location:
+              description: URL of the created file metadata.
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileMetadata"
+              examples:
+                uploaded:
+                  summary: Created file metadata
+                  value:
+                    id: "file_01"
+                    name: "insurance.pdf"
+                    content_type: application/pdf
+                    size_bytes: 1048576
+                    sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    folder_id: "folder_01"
+                    visibility: household
+                    description: Family insurance document
+                    created_at: "2026-11-17T14:00:00Z"
+                    updated_at: "2026-11-17T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "507":
+          $ref: "#/components/responses/InsufficientStorage"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
+    get:
+      operationId: listFiles
+      tags: [Files]
+      summary: List household files
+      description: Returns files for the authenticated household using cursor pagination.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor returned by the previous page.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of items to return.
+          schema:
+            type: integer
+            minimum: 1
+        - name: sort_by
+          in: query
+          required: false
+          description: Sort by file name, creation date, or size.
+          schema:
+            type: string
+            enum: [name, date, size]
+        - name: sort_order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: folder_id
+          in: query
+          required: false
+          description: Restrict results to a folder.
+          schema:
+            type: string
+        - name: visibility
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/FileVisibility"
+      responses:
+        "200":
+          description: A page of household files.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileList"
+              examples:
+                firstPage:
+                  value:
+                    items: []
+                    next_cursor: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
+  /files/{id}:
+    parameters:
+      - $ref: "#/components/parameters/FileID"
+    get:
+      operationId: getFile
+      tags: [Files]
+      summary: Get file metadata
+      responses:
+        "200":
+          description: File metadata.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileMetadata"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
+    patch:
+      operationId: updateFile
+      tags: [Files]
+      summary: Update file metadata
+      description: |
+        Updates the supplied metadata fields. The ETag returned by a previous
+        read or upload must be sent in If-Match to prevent lost updates.
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          description: ETag of the current file metadata.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileMetadataPatch"
+            example:
+              name: "insurance-2026.pdf"
+              description: Updated insurance document
+      responses:
+        "200":
+          description: Updated file metadata.
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileMetadata"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
+  /files/{id}/content:
+    parameters:
+      - $ref: "#/components/parameters/FileID"
+    get:
+      operationId: getFileContent
+      tags: [Files]
+      summary: Download or preview file content
+      description: Streams file bytes and supports a single HTTP byte range.
+      parameters:
+        - name: Range
+          in: header
+          required: false
+          description: Single byte range, for example bytes=0-1023.
+          schema:
+            type: string
+        - name: disposition
+          in: query
+          required: true
+          description: Choose inline preview or attachment download.
+          schema:
+            type: string
+            enum: [inline, attachment]
+      responses:
+        "200":
+          description: Complete file content.
+          headers:
+            Accept-Ranges:
+              description: Supported range unit.
+              schema:
+                type: string
+                const: bytes
+            Content-Disposition:
+              description: Inline preview or attachment download disposition.
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Partial file content for the requested byte range.
+          headers:
+            Accept-Ranges:
+              description: Supported range unit.
+              schema:
+                type: string
+                const: bytes
+            Content-Range:
+              description: Byte range returned and complete resource size.
+              schema:
+                type: string
+            Content-Disposition:
+              description: Inline preview or attachment download disposition.
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "406":
+          $ref: "#/components/responses/PreviewNotAcceptable"
+        "416":
+          $ref: "#/components/responses/RangeNotSatisfiable"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Household API access token. The service verifies issuer and audience,
+        then uses the verified household_id claim for data scoping.
+  parameters:
+    FileID:
+      name: id
+      in: path
+      required: true
+      description: File identifier.
+      schema:
+        type: string
+  headers:
+    ETag:
+      description: Strong validator for the file metadata representation.
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid request or metadata.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Forbidden:
+      description: The authenticated member is not allowed to perform this operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: File does not exist in the authenticated household.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    PayloadTooLarge:
+      description: The file exceeds the 25 MB per-file limit.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    UnsupportedMediaType:
+      description: The detected file type is not allowed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InsufficientStorage:
+      description: Household storage quota is exhausted.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    PreconditionFailed:
+      description: The supplied ETag does not match the current metadata.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    PreconditionRequired:
+      description: If-Match is required for metadata updates.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    RangeNotSatisfiable:
+      description: The requested byte range cannot be served.
+      headers:
+        Content-Range:
+          description: Complete resource size in the form bytes */size.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    PreviewNotAcceptable:
+      description: Inline preview is unavailable for the detected file type.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotImplemented:
+      description: The current scaffold has not implemented this file operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    DependencyUnavailable:
+      description: A required storage dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    FileVisibility:
+      type: string
+      enum: [private, household]
+    FileMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - content_type
+        - size_bytes
+        - sha256
+        - folder_id
+        - visibility
+        - description
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: Stored name, including any numeric suffix assigned to avoid a duplicate.
+        content_type:
+          type: string
+          description: Media type detected from the file bytes.
+        size_bytes:
+          type: integer
+          minimum: 0
+        sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        folder_id:
+          type: string
+        visibility:
+          $ref: "#/components/schemas/FileVisibility"
+        description:
+          type: [string, "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    FileList:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileMetadata"
+        next_cursor:
+          type: [string, "null"]
+    FileMetadataPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+        folder_id:
+          type: string
+        visibility:
+          $ref: "#/components/schemas/FileVisibility"
+        description:
+          type: [string, "null"]
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: string
+      example:
+        error:
+          code: not_found
+          message: File was not found in this household.
+          request_id: "01JCVNCC0XABCDEF1234567890"
