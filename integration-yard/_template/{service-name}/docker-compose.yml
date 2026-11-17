@@ -1,37 +1,19 @@
 services:
-  # ===================================== Main Service ===================================== 
   {service_name}:
     build:
-      context: ../../standard_services/{service_name}
+      context: ../../standard_services/{service-directory}/
     env_file:
       - ./catalog/ci.env
-    depends_on:
-      - {dependency_service_1}
 
-  # ===================================== Functionality Test ===================================== 
   integration-test:
     build:
       context: ./test-container
     env_file:
       - ./catalog/ci.env
+    environment:
+      OPENAPI_SPEC: /contracts/openapi.yaml
+      API_BASE_URL: http://{service_name}:REPLACE_WITH_PORT
     depends_on:
       - {service_name}
-
-  # ===================================== Service Dependencies ===================================== 
-  # This section is for any additional services that the main service depends on. 
-  # These can be other microservices, databases, or any other required services. 
-  # Each dependency should be defined with its own build context or image, 
-  # and can also have its own environment variables and configurations.
-
-  # Depencies can be defined using either a build context (for local builds) or an image (for pre-built images).
-  {dependency_service_1}:
-    build:
-      context: ../../standard_services/{dependency_container_1}
-    env_file:
-      - ./catalog/ci.env
-
-  # If the dependency is a pre-built image, you can specify it directly using the image name and tag.
-  {dependency_service_2}:
-    image: {dependency_service_2}:{specific-tag}@{sha-digest}
-    env_file:
-      - ./catalog/ci.env
+    volumes:
+      - ../../standard_services/{service-directory}/api/openapi.yaml:/contracts/openapi.yaml:ro

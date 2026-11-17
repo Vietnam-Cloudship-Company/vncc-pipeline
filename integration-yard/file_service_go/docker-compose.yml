@@ -1,0 +1,21 @@
+services:
+  file_service_go:
+    build:
+      context: ../../standard_services/file_service_go/
+    env_file:
+      - ./catalog/ci.env
+
+  integration-test:
+    build:
+      context: ./test-container
+    env_file:
+      - ./catalog/ci.env
+    environment:
+      OPENAPI_SPEC: /contracts/openapi.yaml
+      API_BASE_URL: http://file_service_go:8080
+      API_BEARER_TOKEN: ${API_BEARER_TOKEN:-}
+      API_TEST_FOLDER_ID: ${API_TEST_FOLDER_ID:-}
+    depends_on:
+      - file_service_go
+    volumes:
+      - ../../standard_services/file_service_go/api/openapi.yaml:/contracts/openapi.yaml:ro
