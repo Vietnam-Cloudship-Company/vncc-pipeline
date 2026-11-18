@@ -1,0 +1,65 @@
+services:
+  # ===================================== Main Service =====================================
+  ui-react-ts:
+    build:
+      context: ../../../../products/household/ui_react_ts
+    env_file:
+      - ./catalog/ci.env
+    networks:
+      - yard
+
+  # ===================================== Functionality Test =====================================
+  integration-test:
+    build:
+      context: ./test-container
+    env_file:
+      - ./catalog/ci.env
+    depends_on:
+      - ui-react-ts
+
+  # ===================================== Service Dependencies =====================================
+  api_apache_apisix:
+    build:
+      context: ../../../../standard_services/api_apache_apisix
+    env_file:
+      - ./catalog/ci.env
+    environment:
+      PRODUCT: ${PRODUCT:-house}
+      ADMIN_KEY: ${ADMIN_KEY:?Set ADMIN_KEY through the CI environment or secret store}
+    volumes:
+      - type: bind
+        source: ../../../../standard_services/api_apache_apisix/config/${PRODUCT:-house}
+        target: /etc/apisix/product-config
+        read_only: true
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - yard
+
+  # Dependency for api_apache_apisix
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.17
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd=http://etcd:2380
+      - --initial-cluster-state=new
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - yard
+
+networks:
+  yard:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
